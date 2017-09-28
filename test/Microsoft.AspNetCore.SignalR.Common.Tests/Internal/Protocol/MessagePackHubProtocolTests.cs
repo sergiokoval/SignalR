@@ -25,15 +25,17 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
             new object[] { new[] { new InvocationMessage("xyz", /*nonBlocking*/ true, "method", 42, "string", new CustomObject()) } },
             new object[] { new[] { new InvocationMessage("xyz", /*nonBlocking*/ true, "method", new[] { new CustomObject(), new CustomObject() }) } },
 
-            new object[] { new[] { new CompletionMessage("xyz", error: "Error not found!", result: null, hasResult: false) } },
-            new object[] { new[] { new CompletionMessage("xyz", error: null, result: null, hasResult: false) } },
-            new object[] { new[] { new CompletionMessage("xyz", error: null, result: null, hasResult: true) } },
-            new object[] { new[] { new CompletionMessage("xyz", error: null, result: 42, hasResult: true) } },
-            new object[] { new[] { new CompletionMessage("xyz", error: null, result: 42.0f, hasResult: true) } },
-            new object[] { new[] { new CompletionMessage("xyz", error: null, result: "string", hasResult: true) } },
-            new object[] { new[] { new CompletionMessage("xyz", error: null, result: true, hasResult: true) } },
-            new object[] { new[] { new CompletionMessage("xyz", error: null, result: new CustomObject(), hasResult: true) } },
-            new object[] { new[] { new CompletionMessage("xyz", error: null, result: new[] { new CustomObject(), new CustomObject() }, hasResult: true) } },
+            new object[] { new[] { new CompletionMessage("xyz", error: "Error not found!", result: null, hasResult: false, isStreamingCompletion: false) } },
+            new object[] { new[] { new CompletionMessage("xyz", error: "Error not found!", result: null, hasResult: false, isStreamingCompletion: true) } },
+            new object[] { new[] { new CompletionMessage("xyz", error: null, result: null, hasResult: false, isStreamingCompletion: false) } },
+            new object[] { new[] { new CompletionMessage("xyz", error: null, result: null, hasResult: false, isStreamingCompletion: true) } },
+            new object[] { new[] { new CompletionMessage("xyz", error: null, result: null, hasResult: true, isStreamingCompletion: false) } },
+            new object[] { new[] { new CompletionMessage("xyz", error: null, result: 42, hasResult: true, isStreamingCompletion: false) } },
+            new object[] { new[] { new CompletionMessage("xyz", error: null, result: 42.0f, hasResult: true, isStreamingCompletion: false) } },
+            new object[] { new[] { new CompletionMessage("xyz", error: null, result: "string", hasResult: true, isStreamingCompletion: false) } },
+            new object[] { new[] { new CompletionMessage("xyz", error: null, result: true, hasResult: true, isStreamingCompletion: false) } },
+            new object[] { new[] { new CompletionMessage("xyz", error: null, result: new CustomObject(), hasResult: true, isStreamingCompletion: false) } },
+            new object[] { new[] { new CompletionMessage("xyz", error: null, result: new[] { new CustomObject(), new CustomObject() }, hasResult: true, isStreamingCompletion: false) } },
 
             new object[] { new[] { new StreamItemMessage("xyz", null) } },
             new object[] { new[] { new StreamItemMessage("xyz", 42) } },
@@ -48,9 +50,9 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
                 new HubMessage[]
                 {
                     new InvocationMessage("xyz", /*nonBlocking*/ true, "method", 42, "string", new CustomObject()),
-                    new CompletionMessage("xyz", error: null, result: 42, hasResult: true),
+                    new CompletionMessage("xyz", error: null, result: 42, hasResult: true, isStreamingCompletion: false),
                     new StreamItemMessage("xyz", null),
-                    new CompletionMessage("xyz", error: null, result: new CustomObject(), hasResult: true)
+                    new CompletionMessage("xyz", error: null, result: new CustomObject(), hasResult: true, isStreamingCompletion: false)
                 }
             }
         };

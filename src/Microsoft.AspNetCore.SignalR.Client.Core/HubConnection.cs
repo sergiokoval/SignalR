@@ -153,7 +153,7 @@ namespace Microsoft.AspNetCore.SignalR.Client
 
                         if (invocationReq.HubConnection.TryRemoveInvocation(invocationReq.InvocationId, out _))
                         {
-                            invocationReq.Complete(null);
+                            invocationReq.Complete(CompletionMessage.ForStream(invocationReq.InvocationId));
                         }
 
                         invocationReq.Dispose();
@@ -339,14 +339,7 @@ namespace Microsoft.AspNetCore.SignalR.Client
             }
             else
             {
-                if (!string.IsNullOrEmpty(completion.Error))
-                {
-                    irq.Fail(new HubException(completion.Error));
-                }
-                else
-                {
-                    irq.Complete(completion.Result);
-                }
+                irq.Complete(completion);
             }
         }
 

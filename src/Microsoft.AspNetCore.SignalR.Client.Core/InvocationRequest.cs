@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Channels;
 using Microsoft.AspNetCore.SignalR.Client.Internal;
+using Microsoft.AspNetCore.SignalR.Internal.Protocol;
 using Microsoft.Extensions.Logging;
 
 namespace Microsoft.AspNetCore.SignalR.Client
@@ -41,7 +42,6 @@ namespace Microsoft.AspNetCore.SignalR.Client
             return req;
         }
 
-
         public static InvocationRequest Stream(CancellationToken cancellationToken, Type resultType, string invocationId,
             ILoggerFactory loggerFactory, HubConnection hubConnection, out ReadableChannel<object> result)
         {
@@ -51,7 +51,7 @@ namespace Microsoft.AspNetCore.SignalR.Client
         }
 
         public abstract void Fail(Exception exception);
-        public abstract void Complete(object result);
+        public abstract void Complete(CompletionMessage completionMessage);
         public abstract ValueTask<bool> StreamItem(object item);
 
         protected abstract void Cancel();
@@ -77,18 +77,30 @@ namespace Microsoft.AspNetCore.SignalR.Client
 
             public ReadableChannel<object> Result => _channel.In;
 
-            public override void Complete(object result)
+            public override void Complete(CompletionMessage completionMessage)
             {
-                Logger.InvocationCompleted(InvocationId);
-                if (result != null)
+                if (!completionMessage.IsStreamingCompletion)
+                {
+                    Logger.ReceivedUnexpectedHubMethodCompletion(InvocationId);
+                    Fail(new InvalidOperationException("Server returned non-streaming completion message for a streamed invocation."));
+                    return;
+                }
+
+                if (completionMessage.Result != null)
                 {
                     Logger.ReceivedUnexpectedComplete(InvocationId);
-                    _channel.Out.TryComplete(new InvalidOperationException("Server provided a result in a completion response to a streamed invocation."));
+                    Fail(new InvalidOperationException("Server provided a result in a completion response to a streamed invocation."));
+                    return;
                 }
-                else
+
+                if (!string.IsNullOrEmpty(completionMessage.Error))
                 {
-                    _channel.Out.TryComplete();
+                    Fail(new HubException(completionMessage.Error));
+                    return;
                 }
+
+                Logger.InvocationCompleted(InvocationId);
+                _channel.Out.TryComplete();
             }
 
             public override void Fail(Exception exception)
@@ -133,10 +145,24 @@ namespace Microsoft.AspNetCore.SignalR.Client
 
             public Task<object> Result => _completionSource.Task;
 
-            public override void Complete(object result)
+            public override void Complete(CompletionMessage completionMessage)
             {
+                if (completionMessage.IsStreamingCompletion)
+                {
+                    Logger.ReceivedUnexpectedStreamingCompletion(InvocationId);
+                    _completionSource.TrySetException(new InvalidOperationException("Server returned streaming completion message for a non-streamed invocation."));
+                    return;
+                }
+
+                if (!string.IsNullOrEmpty(completionMessage.Error))
+                {
+                    Fail(new HubException(completionMessage.Error));
+                    return;
+                }
+
                 Logger.InvocationCompleted(InvocationId);
-                _completionSource.TrySetResult(result);
+                _completionSource.TrySetResult(completionMessage.Result);
+
             }
 
             public override void Fail(Exception exception)
@@ -148,7 +174,7 @@ namespace Microsoft.AspNetCore.SignalR.Client
             public override ValueTask<bool> StreamItem(object item)
             {
                 Logger.StreamItemOnNonStreamInvocation(InvocationId);
-                _completionSource.TrySetException(new InvalidOperationException("Streaming methods must be invoked using HubConnection.Stream"));
+                _completionSource.TrySetException(new InvalidOperationException($"Streaming methods must be invoked using {nameof(HubConnection.StreamAsync)}."));
 
                 // We "delivered" the stream item successfully as far as the caller cares
                 return new ValueTask<bool>(true);

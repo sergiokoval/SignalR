@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using Microsoft.AspNetCore.SignalR.Internal.Formatters;
 using Newtonsoft.Json;
@@ -25,6 +26,7 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
         private const int InvocationMessageType = 1;
         private const int ResultMessageType = 2;
         private const int CompletionMessageType = 3;
+        private const int StreamCompletionMessageType = 4;
         private const int CancelInvocationMessageType = 5;
 
         // ONLY to be used for application payloads (args, return values, etc.)
@@ -111,6 +113,7 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
                         case ResultMessageType:
                             return BindResultMessage(json, binder);
                         case CompletionMessageType:
+                        case StreamCompletionMessageType:
                             return BindCompletionMessage(json, binder);
                         case CancelInvocationMessageType:
                             return BindCancelInvocationMessage(json);
@@ -152,7 +155,8 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
         private void WriteCompletionMessage(CompletionMessage message, JsonTextWriter writer)
         {
             writer.WriteStartObject();
-            WriteHubMessageCommon(message, writer, CompletionMessageType);
+            var messageType = message.IsStreamingCompletion ? StreamCompletionMessageType : CompletionMessageType;
+            WriteHubMessageCommon(message, writer, messageType);
             if (!string.IsNullOrEmpty(message.Error))
             {
                 writer.WritePropertyName(ErrorPropertyName);
@@ -261,16 +265,15 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
                 throw new FormatException("The 'error' and 'result' properties are mutually exclusive.");
             }
 
+            var isStreamingCompletion = JsonUtils.GetRequiredProperty<int>(json, TypePropertyName, JTokenType.Integer) == StreamCompletionMessageType;
             if (resultProp == null)
             {
-                return new CompletionMessage(invocationId, error, result: null, hasResult: false);
+                return new CompletionMessage(invocationId, error, result: null, hasResult: false, isStreamingCompletion: isStreamingCompletion);
             }
-            else
-            {
-                var returnType = binder.GetReturnType(invocationId);
-                var payload = resultProp.Value?.ToObject(returnType, _payloadSerializer);
-                return new CompletionMessage(invocationId, error, result: payload, hasResult: true);
-            }
+
+            var returnType = binder.GetReturnType(invocationId);
+            var payload = resultProp.Value?.ToObject(returnType, _payloadSerializer);
+            return new CompletionMessage(invocationId, error, result: payload, hasResult: true, isStreamingCompletion: isStreamingCompletion);
         }
 
         private CancelInvocationMessage BindCancelInvocationMessage(JObject json)

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using Microsoft.AspNetCore.SignalR.Internal.Formatters;
 using MsgPack;
@@ -15,6 +16,7 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
         private const int InvocationMessageType = 1;
         private const int StreamItemMessageType = 2;
         private const int CompletionMessageType = 3;
+        private const int StreamCompletionMessageType = 4;
         private const int CancelInvocationMessageType = 5;
 
         private const int ErrorResult = 1;
@@ -64,9 +66,9 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
                 case StreamItemMessageType:
                     return CreateStreamItemMessage(unpacker, binder);
                 case CompletionMessageType:
-                    return CreateCompletionMessage(unpacker, binder);
-                case CancelInvocationMessageType:
-                    return CreateCancelInvocationMessage(unpacker);
+                    return CreateCompletionMessage(unpacker, binder, isStreamingCompletion: false);
+                case StreamCompletionMessageType:
+                    return CreateCompletionMessage(unpacker, binder, isStreamingCompletion: true);
                 default:
                     throw new FormatException($"Invalid message type: {messageType}.");
             }
@@ -103,7 +105,7 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
             return new StreamItemMessage(invocationId, value);
         }
 
-        private static CompletionMessage CreateCompletionMessage(Unpacker unpacker, IInvocationBinder binder)
+        private static CompletionMessage CreateCompletionMessage(Unpacker unpacker, IInvocationBinder binder, bool isStreamingCompletion)
         {
             var invocationId = ReadInvocationId(unpacker);
             var resultKind = ReadInt32(unpacker, "resultKind");
@@ -129,7 +131,9 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
                     throw new FormatException("Invalid invocation result kind.");
             }
 
-            return new CompletionMessage(invocationId, error, result, hasResult);
+            Debug.Assert(!hasResult || !isStreamingCompletion, "Streaming completions can't have results.");
+
+            return new CompletionMessage(invocationId, error, result, hasResult, isStreamingCompletion);
         }
 
         private static CancelInvocationMessage CreateCancelInvocationMessage(Unpacker unpacker)
@@ -197,7 +201,9 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
                 VoidResult;
 
             packer.PackArrayHeader(3 + (resultKind != VoidResult ? 1 : 0));
-            packer.Pack(CompletionMessageType);
+
+            var messageType = completionMessage.IsStreamingCompletion ? StreamCompletionMessageType : CompletionMessageType;
+            packer.Pack(messageType);
             packer.PackString(completionMessage.InvocationId);
             packer.Pack(resultKind);
             switch (resultKind)

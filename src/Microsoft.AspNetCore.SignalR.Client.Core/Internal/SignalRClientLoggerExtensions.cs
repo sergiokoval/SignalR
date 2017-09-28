@@ -99,9 +99,15 @@ namespace Microsoft.AspNetCore.SignalR.Client.Internal
         private static readonly Action<ILogger, string, Exception> _errorWritingStreamItem =
             LoggerMessage.Define<string>(LogLevel.Error, new EventId(5, nameof(ErrorWritingStreamItem)), "Invocation {invocationId} caused an error trying to write a stream item.");
 
+        private static readonly Action<ILogger, string, Exception> _receivedUnexpectedHubMethodCompletion =
+            LoggerMessage.Define<string>(LogLevel.Error, new EventId(5, nameof(ReceivedUnexpectedHubMethodCompletion)), "Invocation {invocationId} was invoked as a streaming hub method but completed with non streaming completion.");
+
         // Category: NonStreaming
         private static readonly Action<ILogger, string, Exception> _streamItemOnNonStreamInvocation =
             LoggerMessage.Define<string>(LogLevel.Error, new EventId(4, nameof(StreamItemOnNonStreamInvocation)), "Invocation {invocationId} received stream item but was invoked as a non-streamed invocation.");
+
+        private static readonly Action<ILogger, string, Exception> _receivedUnexpectedStreamingCompletion =
+            LoggerMessage.Define<string>(LogLevel.Error, new EventId(5, nameof(ReceivedUnexpectedStreamingCompletion)), "Invocation {invocationId} was invoked as a non-streaming hub method but completed with stream completion.");
 
         public static void PreparingNonBlockingInvocation(this ILogger logger, string invocationId, string target, int count)
         {
@@ -259,6 +265,16 @@ namespace Microsoft.AspNetCore.SignalR.Client.Internal
         public static void StreamItemOnNonStreamInvocation(this ILogger logger, string invocationId)
         {
             _streamItemOnNonStreamInvocation(logger, invocationId, null);
+        }
+
+        public static void ReceivedUnexpectedHubMethodCompletion(this ILogger logger, string invocationId)
+        {
+            _receivedUnexpectedHubMethodCompletion(logger, invocationId, null);
+        }
+
+        public static void ReceivedUnexpectedStreamingCompletion(this ILogger logger, string invocationId)
+        {
+            _receivedUnexpectedStreamingCompletion(logger, invocationId, null);
         }
     }
 }
