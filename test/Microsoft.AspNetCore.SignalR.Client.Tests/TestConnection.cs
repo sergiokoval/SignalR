@@ -2,6 +2,8 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -30,13 +32,15 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
         private TransferMode? _transferMode;
 
         public event Func<Task> Connected;
-        public event Func<byte[], Task> Received;
         public event Func<Exception, Task> Closed;
 
         public Task Started => _started.Task;
         public Task Disposed => _disposed.Task;
         public ReadableChannel<byte[]> SentMessages => _sentMessages.In;
         public WritableChannel<byte[]> ReceivedMessages => _receivedMessages.Out;
+
+        private ConcurrentDictionary<int, Tuple<Func<byte[], object, Task>, object>> _callBacks = new ConcurrentDictionary<int, Tuple<Func<byte[], object, Task>, object>>();
+        private int _callBackId;
 
         public IFeatureCollection Features { get; } = new FeatureCollection();
 
@@ -120,7 +124,10 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
                     {
                         while (_receivedMessages.In.TryRead(out var message))
                         {
-                            await Received?.Invoke(message);
+                            foreach (var callBackTuple in _callBacks.Values)
+                            {
+                                await callBackTuple.Item1(message, callBackTuple.Item2);
+                            }
                         }
                     }
                 }
@@ -134,6 +141,29 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
             catch (Exception ex)
             {
                 Closed?.Invoke(ex);
+            }
+        }
+
+        public IDisposable OnReceived(Func<byte[], object, Task> callback, object state)
+        {
+            Interlocked.Increment(ref _callBackId);
+            var addedCallBack = _callBacks.TryAdd(_callBackId, new Tuple<Func<byte[], object, Task>, object>(callback, state));
+            Debug.Assert(addedCallBack);
+            return new Subscription(_callBackId, _callBacks);
+        }
+
+        private class Subscription : IDisposable
+        {
+            private int _callBackId;
+            private ConcurrentDictionary<int, Tuple<Func<byte[], object, Task>, object>> _handler;
+            public Subscription(int callBackId, ConcurrentDictionary<int, Tuple<Func<byte[], object, Task>, object>> handler)
+            {
+                _callBackId = callBackId;
+                _handler = handler;
+            }
+            public void Dispose()
+            {
+                _handler.TryRemove(_callBackId, out _);
             }
         }
     }

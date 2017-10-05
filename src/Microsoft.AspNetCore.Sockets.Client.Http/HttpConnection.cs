@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
@@ -40,12 +41,13 @@ namespace Microsoft.AspNetCore.Sockets.Client
 
         private ReadableChannel<byte[]> Input => _transportChannel.In;
         private WritableChannel<SendMessage> Output => _transportChannel.Out;
+        private ConcurrentDictionary<int, Tuple<Func<byte[], object, Task>, object>> _callBacks = new ConcurrentDictionary<int, Tuple<Func<byte[], object, Task>, object>>();
+        private int _callBackId;
 
         public Uri Url { get; }
 
         public IFeatureCollection Features { get; } = new FeatureCollection();
 
-        public event Func<byte[], Task> Received;
         public event Func<Exception, Task> Closed;
 
         public HttpConnection(Uri url)
@@ -338,18 +340,12 @@ namespace Microsoft.AspNetCore.Sockets.Client
                         {
                             _logger.RaiseReceiveEvent(_connectionId);
 
-                            var receivedHandler = Received;
-                            if (receivedHandler != null)
+                            //First item in the tuple is the callback, second item is the state object.
+                            foreach (var callBackTuple in _callBacks.Values)
                             {
-                                try
-                                {
-                                    await receivedHandler(buffer);
-                                }
-                                catch (Exception ex)
-                                {
-                                    _logger.ExceptionThrownFromHandler(_connectionId, nameof(Received), ex);
-                                }
+                                await callBackTuple.Item1(buffer, callBackTuple.Item2);
                             }
+
                         });
                     }
                     else
@@ -442,6 +438,29 @@ namespace Microsoft.AspNetCore.Sockets.Client
             }
 
             _httpClient.Dispose();
+        }
+
+        public IDisposable OnReceived(Func<byte[], object, Task> callback, object state)
+        {
+            Interlocked.Increment(ref _callBackId);
+            var addedCallBack = _callBacks.TryAdd(_callBackId, new Tuple<Func<byte[], object, Task>, object>(callback, state));
+            Debug.Assert(addedCallBack);
+            return new Subscription(_callBackId, _callBacks);
+        }
+
+        private class Subscription : IDisposable
+        {
+            private int _callBackId;
+            private ConcurrentDictionary<int, Tuple<Func<byte[], object, Task>, object>> _handler;
+            public Subscription(int callBackId, ConcurrentDictionary<int, Tuple<Func<byte[], object, Task>, object>> handler)
+            {
+                _callBackId = callBackId;
+                _handler = handler;
+            }
+            public void Dispose()
+            {
+                _handler.TryRemove(_callBackId, out _);
+            }
         }
 
         private class ConnectionState

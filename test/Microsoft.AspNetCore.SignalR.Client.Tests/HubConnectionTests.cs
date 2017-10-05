@@ -133,7 +133,7 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
             var hubConnection = new HubConnection(mockConnection.Object, mockProtocol, null);
             await hubConnection.StartAsync();
 
-            mockConnection.Raise(c => c.Received += null, new object[] { new byte[] { } });
+            mockConnection.Raise(c => c.OnReceived((_, __) => { return null; }, null), new object[] { new byte[] { } });
             Assert.Equal(1, mockProtocol.ParseCalls);
         }
 
