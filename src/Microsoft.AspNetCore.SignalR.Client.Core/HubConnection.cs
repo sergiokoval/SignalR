@@ -122,12 +122,10 @@ namespace Microsoft.AspNetCore.SignalR.Client
         // TODO: Client return values/tasks?
         public IDisposable On(string methodName, Type[] parameterTypes, Func<object[], object, Task> handler, object state)
         {
-            // Add a unique id 
             var id = GetNextCallBackId() + methodName;
             var invocationHandler = new InvocationHandler(parameterTypes, handler, state);
             _handlers.AddOrUpdate(id, invocationHandler, (_, __) => invocationHandler);
             return new Subscription(id, _handlers);
-
         }
 
         public async Task<ReadableChannel<object>> StreamAsync(string methodName, Type returnType, object[] args, CancellationToken cancellationToken = default(CancellationToken))
