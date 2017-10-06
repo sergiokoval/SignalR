@@ -66,9 +66,9 @@ namespace Microsoft.AspNetCore.SignalR.Client
             _connection.Closed += Shutdown;
         }
 
-        public async Task StartAsync() => await StartAsyncCore().ForceAsync();
+        public async Task StartAsync(CancellationToken cancellationToken = default(CancellationToken)) => await StartAsyncCore(cancellationToken).ForceAsync();
 
-        private async Task StartAsyncCore()
+        private async Task StartAsyncCore(CancellationToken cancellationToken)
         {
             var transferModeFeature = _connection.Features.Get<ITransferModeFeature>();
             if (transferModeFeature == null)
@@ -83,7 +83,7 @@ namespace Microsoft.AspNetCore.SignalR.Client
                     : TransferMode.Text;
 
             transferModeFeature.TransferMode = requestedTransferMode;
-            await _connection.StartAsync();
+            await _connection.StartAsync(cancellationToken);
             var actualTransferMode = transferModeFeature.TransferMode;
 
             _protocolReaderWriter = new HubProtocolReaderWriter(_protocol, GetDataEncoder(requestedTransferMode, actualTransferMode));
@@ -111,11 +111,11 @@ namespace Microsoft.AspNetCore.SignalR.Client
             return new PassThroughEncoder();
         }
 
-        public async Task DisposeAsync() => await DisposeAsyncCore().ForceAsync();
+        public async Task DisposeAsync(CancellationToken cancellationToken = default(CancellationToken)) => await DisposeAsyncCore(cancellationToken).ForceAsync();
 
-        private async Task DisposeAsyncCore()
+        private async Task DisposeAsyncCore(CancellationToken cancellationToken)
         {
-            await _connection.DisposeAsync();
+            await _connection.DisposeAsync(cancellationToken);
         }
 
         // TODO: Client return values/tasks?
@@ -147,10 +147,10 @@ namespace Microsoft.AspNetCore.SignalR.Client
             return await task;
         }
 
-        public async Task SendAsync(string methodName, object[] args, CancellationToken cancellationToken = default(CancellationToken)) =>
-            await SendAsyncCore(methodName, args, cancellationToken).ForceAsync();
+        public async Task SendAsync(string methodName, CancellationToken cancellationToken = default(CancellationToken), object[] args) =>
+            await SendAsyncCore(methodName, cancellationToken, args).ForceAsync();
 
-        private Task SendAsyncCore(string methodName, object[] args, CancellationToken cancellationToken)
+        private Task SendAsyncCore(string methodName, CancellationToken cancellationToken, object[] args)
         {
             var irq = InvocationRequest.Invoke(cancellationToken, typeof(void), GetNextId(), _loggerFactory, out _);
             return InvokeCore(methodName, irq, args, nonBlocking: true);

@@ -92,9 +92,9 @@ namespace Microsoft.AspNetCore.Sockets.Client
             _transportFactory = transportFactory ?? throw new ArgumentNullException(nameof(transportFactory));
         }
 
-        public async Task StartAsync() => await StartAsyncCore().ForceAsync();
+        public async Task StartAsync(CancellationToken cancellationToken = default(CancellationToken)) => await StartAsyncCore(cancellationToken).ForceAsync();
 
-        private Task StartAsyncCore()
+        private Task StartAsyncCore(CancellationToken cancellationToken)
         {
             if (Interlocked.CompareExchange(ref _connectionState, ConnectionState.Connecting, ConnectionState.Initial)
                 != ConnectionState.Initial)
@@ -126,7 +126,6 @@ namespace Microsoft.AspNetCore.Sockets.Client
         private async Task StartAsyncInternal()
         {
             _logger.HttpConnectionStarting();
-
             try
             {
                 var negotiationResponse = await Negotiate(Url, _httpClient, _logger);

@@ -46,7 +46,7 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
             _receiveLoop = ReceiveLoopAsync(_receiveShutdownToken.Token);
         }
 
-        public Task DisposeAsync()
+        public Task DisposeAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
             _disposed.TrySetResult(null);
             _receiveShutdownToken.Cancel();
@@ -70,7 +70,7 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
             throw new ObjectDisposedException("Unable to send message, underlying channel was closed");
         }
 
-        public Task StartAsync()
+        public Task StartAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
             if (_transferMode.HasValue)
             {
