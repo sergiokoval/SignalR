@@ -13,7 +13,7 @@
     <PackageReference Include="Microsoft.AspNetCore.Hosting.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
-    <PackageReference Include="System.Threading.Tasks.Channels" />
+    <PackageReference Include="System.Threading.Tasks.Channels" Version="0.1.0-e171006-1" />
   </ItemGroup>
 
 </Project>

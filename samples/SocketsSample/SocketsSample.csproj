@@ -16,7 +16,7 @@
     <PackageReference Include="Microsoft.AspNetCore.Diagnostics" />
     <PackageReference Include="Microsoft.AspNetCore.Hosting" />
     <PackageReference Include="Microsoft.AspNetCore.Server.IISIntegration" />
-    <PackageReference Include="Microsoft.AspNetCore.Server.Kestrel" />
+    <ProjectReference Include="..\..\..\KestrelHttpServer\src\Kestrel\Kestrel.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.StaticFiles" />
     <PackageReference Include="Microsoft.AspNetCore.Cors" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" />

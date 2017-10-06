@@ -17,12 +17,12 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Newtonsoft.Json" />
-    <PackageReference Include="System.IO.Pipelines" />
-    <PackageReference Include="System.IO.Pipelines.Extensions" />
-    <PackageReference Include="System.Memory" />
-    <PackageReference Include="System.Numerics.Vectors" />
-    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" />
-    <PackageReference Include="System.Threading.Tasks.Channels" />
+    <PackageReference Include="System.IO.Pipelines" Version="0.1.0-e171006-1" />
+    <PackageReference Include="System.IO.Pipelines.Extensions" Version="0.1.0-e171006-1" />
+    <PackageReference Include="System.Memory" Version="4.5.0-preview1-25806-02" />
+    <PackageReference Include="System.Numerics.Vectors" Version="4.5.0-preview1-25806-02" />
+    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="4.5.0-preview1-25806-02" />
+    <PackageReference Include="System.Threading.Tasks.Channels" Version="0.1.0-e171006-1" />
   </ItemGroup>
 
 </Project>

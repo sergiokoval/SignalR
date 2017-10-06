@@ -10,11 +10,11 @@
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" />
     <PackageReference Include="MsgPack.Cli" />
-    <PackageReference Include="System.Binary" />
-    <PackageReference Include="System.Buffers.Primitives" />
-    <PackageReference Include="System.Memory" />
-    <PackageReference Include="System.Numerics.Vectors" />
-    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" />
+    <PackageReference Include="System.Binary" Version="0.1.0-e171006-1" />
+    <PackageReference Include="System.Buffers.Primitives" Version="0.1.0-e171006-1" />
+    <PackageReference Include="System.Memory" Version="4.5.0-preview1-25806-02" />
+    <PackageReference Include="System.Numerics.Vectors" Version="4.5.0-preview1-25806-02" />
+    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="4.5.0-preview1-25806-02" />
   </ItemGroup>
 
 </Project>
