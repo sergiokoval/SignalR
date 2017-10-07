@@ -12,10 +12,12 @@ namespace Microsoft.AspNetCore.SignalR.Client
     {
         private static IDisposable On(this HubConnection hubConnetion, string methodName, Type[] parameterTypes, Action<object[]> handler)
         {
-            return hubConnetion.On(methodName, parameterTypes, (parameters) =>
+            //string methodName, Type[] parameterTypes, Func<object[], object, Task> handler, object state)
+            return hubConnetion.On(methodName, parameterTypes, (parameters, _) =>
             {
                 handler(parameters);
-            });
+                return Task.CompletedTask;
+            }, null);
         }
 
         public static IDisposable On(this HubConnection hubConnection, string methodName, Action handler)
