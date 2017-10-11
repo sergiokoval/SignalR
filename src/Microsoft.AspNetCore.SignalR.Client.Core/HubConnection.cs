@@ -35,7 +35,7 @@ namespace Microsoft.AspNetCore.SignalR.Client
         private readonly object _pendingCallsLock = new object();
         private readonly CancellationTokenSource _connectionActive = new CancellationTokenSource();
         private readonly Dictionary<string, InvocationRequest> _pendingCalls = new Dictionary<string, InvocationRequest>();
-        private readonly ConcurrentDictionary<string, InvocationHandler> _handlers = new ConcurrentDictionary<string, InvocationHandler>();
+        private readonly ConcurrentDictionary<string, List<InvocationHandler>> _handlers = new ConcurrentDictionary<string, List<InvocationHandler>>();
 
         private int _nextId = 0;
         private int _nextCallBackId = 0;
@@ -122,10 +122,19 @@ namespace Microsoft.AspNetCore.SignalR.Client
         // TODO: Client return values/tasks?
         public IDisposable On(string methodName, Type[] parameterTypes, Func<object[], object, Task> handler, object state)
         {
-            var id = GetNextCallBackId() + methodName;
             var invocationHandler = new InvocationHandler(parameterTypes, handler, state);
-            _handlers.AddOrUpdate(id, invocationHandler, (_, __) => invocationHandler);
-            return new Subscription(id, _handlers);
+            if (!_handlers.TryGetValue(methodName, out var callBackList))
+            {
+                callBackList = new List<InvocationHandler> { invocationHandler };
+            }
+
+            var invocationList = _handlers.AddOrUpdate(methodName, callBackList, (_, invList) =>
+            {
+                invList.Add(invocationHandler);
+                return invList;
+            });
+
+            return new Subscription(invocationHandler, invocationList);
         }
 
         public async Task<ReadableChannel<object>> StreamAsync(string methodName, Type returnType, object[] args, CancellationToken cancellationToken = default(CancellationToken))
@@ -278,15 +287,19 @@ namespace Microsoft.AspNetCore.SignalR.Client
         private Task DispatchInvocationAsync(InvocationMessage invocation, CancellationToken cancellationToken)
         {
             // Find the handler
-            if (!_handlers.TryGetValue(invocation.Target, out InvocationHandler handler))
+            if (!_handlers.TryGetValue(invocation.Target, out List<InvocationHandler> handlers))
             {
                 _logger.MissingHandler(invocation.Target);
                 return Task.CompletedTask;
             }
-
+            var tasks = new List<Task>();
+            foreach(var handler in handlers)
+            {
+                tasks.Add(handler.Handler(invocation.Arguments, null));
+            }
             // TODO: Return values
             // TODO: Dispatch to a sync context to ensure we aren't blocking this loop.
-            return handler.Handler(invocation.Arguments, null);
+            return Task.WhenAll(tasks);
         }
 
         // This async void is GROSS but we need to dispatch asynchronously because we're writing to a Channel
@@ -383,16 +396,16 @@ namespace Microsoft.AspNetCore.SignalR.Client
 
         private class Subscription : IDisposable
         {
-            private string _methodName;
-            private ConcurrentDictionary<string, InvocationHandler> _handler;
-            public Subscription(string methodName, ConcurrentDictionary<string, InvocationHandler> handler)
+            private InvocationHandler _handler;
+            private List<InvocationHandler> _handlerList;
+            public Subscription(InvocationHandler handler, List<InvocationHandler> handlerList)
             {
-                _methodName = methodName;
                 _handler = handler;
+                _handlerList = handlerList;
             }
             public void Dispose()
             {
-                _handler.TryRemove(_methodName, out _);
+                _handlerList.Remove(_handler);
             }
         }
 
@@ -417,12 +430,16 @@ namespace Microsoft.AspNetCore.SignalR.Client
 
             public Type[] GetParameterTypes(string methodName)
             {
-                if (!_connection._handlers.TryGetValue(methodName, out InvocationHandler handler))
+                if (!_connection._handlers.TryGetValue(methodName, out List<InvocationHandler> handlers))
                 {
                     _connection._logger.MissingHandler(methodName);
                     return Type.EmptyTypes;
                 }
-                return handler.ParameterTypes;
+                if (handlers.Count > 0)
+                {
+                    return handlers[0].ParameterTypes;
+                }
+                throw new FormatException($"There are no callback registered for the method '{methodName}'");
             }
         }
 

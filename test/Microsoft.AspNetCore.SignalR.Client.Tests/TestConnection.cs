@@ -40,7 +40,7 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
         public WritableChannel<byte[]> ReceivedMessages => _receivedMessages.Out;
 
         private ConcurrentDictionary<int, Tuple<Func<byte[], object, Task>, object>> _callBacks = new ConcurrentDictionary<int, Tuple<Func<byte[], object, Task>, object>>();
-        private int _callBackId;
+        private int _callBackId = 0;
 
         public IFeatureCollection Features { get; } = new FeatureCollection();
 
@@ -144,12 +144,14 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
             }
         }
 
+        private int GetNextCallBackId() => Interlocked.Increment(ref _callBackId);
+
         public IDisposable OnReceived(Func<byte[], object, Task> callback, object state)
         {
-            Interlocked.Increment(ref _callBackId);
-            var addedCallBack = _callBacks.TryAdd(_callBackId, new Tuple<Func<byte[], object, Task>, object>(callback, state));
+            var id = GetNextCallBackId(); ;
+            var addedCallBack = _callBacks.TryAdd(id, new Tuple<Func<byte[], object, Task>, object>(callback, state));
             Debug.Assert(addedCallBack);
-            return new Subscription(_callBackId, _callBacks);
+            return new Subscription(id, _callBacks);
         }
 
         private class Subscription : IDisposable

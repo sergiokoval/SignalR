@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
@@ -41,7 +42,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
 
         private ReadableChannel<byte[]> Input => _transportChannel.In;
         private WritableChannel<SendMessage> Output => _transportChannel.Out;
-        private ConcurrentDictionary<int, Tuple<Func<byte[], object, Task>, object>> _callBacks = new ConcurrentDictionary<int, Tuple<Func<byte[], object, Task>, object>>();
+        private List<ReceiveCallBack> _callBacks = new List<ReceiveCallBack>();
         private int _callBackId;
 
         public Uri Url { get; }
@@ -341,11 +342,10 @@ namespace Microsoft.AspNetCore.Sockets.Client
                             _logger.RaiseReceiveEvent(_connectionId);
 
                             //First item in the tuple is the callback, second item is the state object.
-                            foreach (var callBackTuple in _callBacks.Values)
+                            foreach (var callBackObject in _callBacks)
                             {
-                                await callBackTuple.Item1(buffer, callBackTuple.Item2);
+                                await callBackObject.Invoke(buffer);
                             }
-
                         });
                     }
                     else
@@ -440,26 +440,48 @@ namespace Microsoft.AspNetCore.Sockets.Client
             _httpClient.Dispose();
         }
 
+        private int GetNextCallBackId() => Interlocked.Increment(ref _callBackId);
+
+
         public IDisposable OnReceived(Func<byte[], object, Task> callback, object state)
         {
-            Interlocked.Increment(ref _callBackId);
-            var addedCallBack = _callBacks.TryAdd(_callBackId, new Tuple<Func<byte[], object, Task>, object>(callback, state));
-            Debug.Assert(addedCallBack);
-            return new Subscription(_callBackId, _callBacks);
+            var id = GetNextCallBackId();
+            var callBack = new ReceiveCallBack(callback, state, id);
+            _callBacks.Add(callBack);
+            return new Subscription(id, _callBacks);
+        }
+
+        private class ReceiveCallBack
+        {
+            public int CallBackID { get; }
+            private Func<byte[], object, Task> CallBack { get; set; }
+            private object State { get; set; }
+
+            public ReceiveCallBack(Func<byte[], object, Task> callBack, object state, int id)
+            {
+                CallBack = callBack;
+                State = state;
+                CallBackID = id;
+            }
+
+            public Task Invoke(byte[] data)
+            {
+                return CallBack(data, State);
+            }
         }
 
         private class Subscription : IDisposable
         {
             private int _callBackId;
-            private ConcurrentDictionary<int, Tuple<Func<byte[], object, Task>, object>> _handler;
-            public Subscription(int callBackId, ConcurrentDictionary<int, Tuple<Func<byte[], object, Task>, object>> handler)
+            private List<ReceiveCallBack> _handlers;
+            public Subscription(int callBackId, List<ReceiveCallBack> handler)
             {
                 _callBackId = callBackId;
-                _handler = handler;
+                _handlers = handler;
             }
             public void Dispose()
             {
-                _handler.TryRemove(_callBackId, out _);
+                _handlers.RemoveAll((callBack) => { return callBack.CallBackID == _callBackId; });
             }
         }
 
