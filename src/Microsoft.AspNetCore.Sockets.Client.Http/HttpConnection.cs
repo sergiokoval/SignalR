@@ -489,7 +489,10 @@ namespace Microsoft.AspNetCore.Sockets.Client
 
             public void Dispose()
             {
-                _handlers.Remove(_callback);
+                lock (_callbackLock)
+                {
+                    _handlers.Remove(_callback);
+                }
             }
         }
 
