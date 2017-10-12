@@ -39,11 +39,10 @@ namespace Microsoft.AspNetCore.Sockets.Client
         private readonly ITransportFactory _transportFactory;
         private string _connectionId;
         private readonly TimeSpan _eventQueueDrainTimeout = TimeSpan.FromSeconds(5);
-
         private ReadableChannel<byte[]> Input => _transportChannel.In;
         private WritableChannel<SendMessage> Output => _transportChannel.Out;
         private List<ReceiveCallBack> _callBacks = new List<ReceiveCallBack>();
-        private int _callBackId;
+        private object _callbackLock = new object();
 
         public Uri Url { get; }
 
@@ -341,8 +340,15 @@ namespace Microsoft.AspNetCore.Sockets.Client
                         {
                             _logger.RaiseReceiveEvent(_connectionId);
 
-                            //First item in the tuple is the callback, second item is the state object.
-                            foreach (var callBackObject in _callBacks)
+                            //Copying the callbacks to avoid concurrency issues
+                            ReceiveCallBack[] callBackCopies;
+                            lock (_callbackLock)
+                            {
+                                callBackCopies = new ReceiveCallBack[_callBacks.Count];
+                                _callBacks.CopyTo(callBackCopies);
+                            }
+
+                            foreach (var callBackObject in callBackCopies)
                             {
                                 await callBackObject.Invoke(buffer);
                             }
@@ -440,28 +446,27 @@ namespace Microsoft.AspNetCore.Sockets.Client
             _httpClient.Dispose();
         }
 
-        private int GetNextCallBackId() => Interlocked.Increment(ref _callBackId);
-
-
         public IDisposable OnReceived(Func<byte[], object, Task> callback, object state)
         {
-            var id = GetNextCallBackId();
-            var callBack = new ReceiveCallBack(callback, state, id);
+            var callBack = new ReceiveCallBack(callback, state);
             _callBacks.Add(callBack);
-            return new Subscription(id, _callBacks);
+            return new Subscription(callBack, _callBacks, _callbackLock);
+        }
+
+        public IDisposable OnReceived(Func<byte[], object, Task> callback)
+        {
+            return OnReceived(callback, null);
         }
 
         private class ReceiveCallBack
         {
-            public int CallBackID { get; }
-            private Func<byte[], object, Task> CallBack { get; set; }
-            private object State { get; set; }
+            public readonly Func<byte[], object, Task> CallBack;
+            private readonly object State;
 
-            public ReceiveCallBack(Func<byte[], object, Task> callBack, object state, int id)
+            public ReceiveCallBack(Func<byte[], object, Task> callBack, object state)
             {
                 CallBack = callBack;
                 State = state;
-                CallBackID = id;
             }
 
             public Task Invoke(byte[] data)
@@ -472,16 +477,19 @@ namespace Microsoft.AspNetCore.Sockets.Client
 
         private class Subscription : IDisposable
         {
-            private int _callBackId;
-            private List<ReceiveCallBack> _handlers;
-            public Subscription(int callBackId, List<ReceiveCallBack> handler)
+            private readonly ReceiveCallBack _callback;
+            private readonly List<ReceiveCallBack> _handlers;
+            private readonly object _callbackLock;
+            public Subscription(ReceiveCallBack callback, List<ReceiveCallBack> handlers, object callbackLock)
             {
-                _callBackId = callBackId;
-                _handlers = handler;
+                _callback = callback;
+                _handlers = handlers;
+                _callbackLock = callbackLock;
             }
+
             public void Dispose()
             {
-                _handlers.RemoveAll((callBack) => { return callBack.CallBackID == _callBackId; });
+                _handlers.Remove(_callback);
             }
         }
 

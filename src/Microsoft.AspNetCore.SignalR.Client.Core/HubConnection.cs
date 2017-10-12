@@ -36,9 +36,9 @@ namespace Microsoft.AspNetCore.SignalR.Client
         private readonly CancellationTokenSource _connectionActive = new CancellationTokenSource();
         private readonly Dictionary<string, InvocationRequest> _pendingCalls = new Dictionary<string, InvocationRequest>();
         private readonly ConcurrentDictionary<string, List<InvocationHandler>> _handlers = new ConcurrentDictionary<string, List<InvocationHandler>>();
+        private object _handlerLock = new object();
 
         private int _nextId = 0;
-        private int _nextCallBackId = 0;
 
         public event Func<Exception, Task> Closed
         {
@@ -63,7 +63,7 @@ namespace Microsoft.AspNetCore.SignalR.Client
             _protocol = protocol;
             _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
             _logger = _loggerFactory.CreateLogger<HubConnection>();
-            _connection.OnReceived((data, state) => OnDataReceivedAsync(data), null);
+            _connection.OnReceived((data, state) => OnDataReceivedAsync(data), this);
             _connection.Closed += Shutdown;
         }
 
@@ -128,13 +128,13 @@ namespace Microsoft.AspNetCore.SignalR.Client
                 callBackList = new List<InvocationHandler> { invocationHandler };
             }
 
-            var invocationList = _handlers.AddOrUpdate(methodName, callBackList, (_, invList) =>
+            var invocationList = _handlers.AddOrUpdate(methodName, callBackList, (_, invocations) =>
             {
-                invList.Add(invocationHandler);
-                return invList;
+                invocations.Add(invocationHandler);
+                return invocations;
             });
 
-            return new Subscription(invocationHandler, invocationList);
+            return new Subscription(invocationHandler, invocationList, _handlerLock);
         }
 
         public async Task<ReadableChannel<object>> StreamAsync(string methodName, Type returnType, object[] args, CancellationToken cancellationToken = default(CancellationToken))
@@ -284,22 +284,27 @@ namespace Microsoft.AspNetCore.SignalR.Client
             return Task.CompletedTask;
         }
 
-        private Task DispatchInvocationAsync(InvocationMessage invocation, CancellationToken cancellationToken)
+        private async Task DispatchInvocationAsync(InvocationMessage invocation, CancellationToken cancellationToken)
         {
             // Find the handler
-            if (!_handlers.TryGetValue(invocation.Target, out List<InvocationHandler> handlers))
+            if (!_handlers.TryGetValue(invocation.Target, out var handlers))
             {
                 _logger.MissingHandler(invocation.Target);
-                return Task.CompletedTask;
+                return;
+            }
+
+            //Copying the callbacks to avoid concurrency issues
+            InvocationHandler[] copiedHandlers;
+            lock (_handlerLock)
+            {
+                copiedHandlers = new InvocationHandler[handlers.Count];
+                handlers.CopyTo(copiedHandlers);
             }
             var tasks = new List<Task>();
-            foreach(var handler in handlers)
+            foreach (var handler in copiedHandlers)
             {
-                tasks.Add(handler.Handler(invocation.Arguments, null));
+                await handler.Callback(invocation.Arguments, handler.State);
             }
-            // TODO: Return values
-            // TODO: Dispatch to a sync context to ensure we aren't blocking this loop.
-            return Task.WhenAll(tasks);
         }
 
         // This async void is GROSS but we need to dispatch asynchronously because we're writing to a Channel
@@ -349,7 +354,6 @@ namespace Microsoft.AspNetCore.SignalR.Client
         }
 
         private string GetNextId() => Interlocked.Increment(ref _nextId).ToString();
-        private string GetNextCallBackId() => Interlocked.Increment(ref _nextCallBackId).ToString();
 
         private void AddInvocation(InvocationRequest irq)
         {
@@ -396,16 +400,22 @@ namespace Microsoft.AspNetCore.SignalR.Client
 
         private class Subscription : IDisposable
         {
-            private InvocationHandler _handler;
-            private List<InvocationHandler> _handlerList;
-            public Subscription(InvocationHandler handler, List<InvocationHandler> handlerList)
+            private readonly InvocationHandler _handler;
+            private readonly List<InvocationHandler> _handlerList;
+            private readonly object _handlerLock;
+
+            public Subscription(InvocationHandler handler, List<InvocationHandler> handlerList, object handlerLock)
             {
                 _handler = handler;
                 _handlerList = handlerList;
+                _handlerLock = handlerLock;
             }
             public void Dispose()
             {
-                _handlerList.Remove(_handler);
+                lock (_handlerLock)
+                {
+                    _handlerList.Remove(_handler);
+                }
             }
         }
 
@@ -435,23 +445,25 @@ namespace Microsoft.AspNetCore.SignalR.Client
                     _connection._logger.MissingHandler(methodName);
                     return Type.EmptyTypes;
                 }
+
+                // We use the parameter types of the first handler
                 if (handlers.Count > 0)
                 {
                     return handlers[0].ParameterTypes;
                 }
-                throw new FormatException($"There are no callback registered for the method '{methodName}'");
+                throw new FormatException($"There are no callbacks registered for the method '{methodName}'");
             }
         }
 
         private struct InvocationHandler
         {
-            public Func<object[], object, Task> Handler { get; }
+            public Func<object[], object, Task> Callback { get; }
             public Type[] ParameterTypes { get; }
             public object State { get; }
 
-            public InvocationHandler(Type[] parameterTypes, Func<object[], object, Task> handler, object state)
+            public InvocationHandler(Type[] parameterTypes, Func<object[], object, Task> callback, object state)
             {
-                Handler = handler;
+                Callback = callback;
                 ParameterTypes = parameterTypes;
                 State = state;
             }
