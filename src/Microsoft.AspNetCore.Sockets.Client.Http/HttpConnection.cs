@@ -478,12 +478,12 @@ namespace Microsoft.AspNetCore.Sockets.Client
         private class Subscription : IDisposable
         {
             private readonly ReceiveCallBack _callback;
-            private readonly List<ReceiveCallBack> _handlers;
+            private readonly List<ReceiveCallBack> _callbacks;
             private readonly object _callbackLock;
-            public Subscription(ReceiveCallBack callback, List<ReceiveCallBack> handlers, object callbackLock)
+            public Subscription(ReceiveCallBack callback, List<ReceiveCallBack> callbacks, object callbackLock)
             {
                 _callback = callback;
-                _handlers = handlers;
+                _callbacks = callbacks;
                 _callbackLock = callbackLock;
             }
 
@@ -491,7 +491,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
             {
                 lock (_callbackLock)
                 {
-                    _handlers.Remove(_callback);
+                    _callbacks.Remove(_callback);
                 }
             }
         }
