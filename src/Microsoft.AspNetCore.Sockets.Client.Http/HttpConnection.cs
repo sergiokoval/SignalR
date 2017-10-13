@@ -42,7 +42,6 @@ namespace Microsoft.AspNetCore.Sockets.Client
         private ReadableChannel<byte[]> Input => _transportChannel.In;
         private WritableChannel<SendMessage> Output => _transportChannel.Out;
         private List<ReceiveCallBack> _callBacks = new List<ReceiveCallBack>();
-        private object _callbackLock = new object();
 
         public Uri Url { get; }
 
@@ -342,7 +341,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
 
                             //Copying the callbacks to avoid concurrency issues
                             ReceiveCallBack[] callBackCopies;
-                            lock (_callbackLock)
+                            lock (_callBacks)
                             {
                                 callBackCopies = new ReceiveCallBack[_callBacks.Count];
                                 _callBacks.CopyTo(callBackCopies);
@@ -350,7 +349,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
 
                             foreach (var callBackObject in callBackCopies)
                             {
-                                await callBackObject.Invoke(buffer);
+                                await callBackObject.InvokeAsync(buffer);
                             }
                         });
                     }
@@ -449,8 +448,11 @@ namespace Microsoft.AspNetCore.Sockets.Client
         public IDisposable OnReceived(Func<byte[], object, Task> callback, object state)
         {
             var callBack = new ReceiveCallBack(callback, state);
-            _callBacks.Add(callBack);
-            return new Subscription(callBack, _callBacks, _callbackLock);
+            lock (_callBacks)
+            {
+                _callBacks.Add(callBack);
+            }
+            return new Subscription(callBack, _callBacks);
         }
 
         public IDisposable OnReceived(Func<byte[], object, Task> callback)
@@ -458,7 +460,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
             return OnReceived(callback, null);
         }
 
-        private class ReceiveCallBack
+        public class ReceiveCallBack
         {
             public readonly Func<byte[], object, Task> CallBack;
             private readonly object State;
@@ -469,27 +471,25 @@ namespace Microsoft.AspNetCore.Sockets.Client
                 State = state;
             }
 
-            public Task Invoke(byte[] data)
+            public Task InvokeAsync(byte[] data)
             {
                 return CallBack(data, State);
             }
         }
 
-        private class Subscription : IDisposable
+        public class Subscription : IDisposable
         {
             private readonly ReceiveCallBack _callback;
             private readonly List<ReceiveCallBack> _callbacks;
-            private readonly object _callbackLock;
-            public Subscription(ReceiveCallBack callback, List<ReceiveCallBack> callbacks, object callbackLock)
+            public Subscription(ReceiveCallBack callback, List<ReceiveCallBack> callbacks)
             {
                 _callback = callback;
                 _callbacks = callbacks;
-                _callbackLock = callbackLock;
             }
 
             public void Dispose()
             {
-                lock (_callbackLock)
+                lock (_callbacks)
                 {
                     _callbacks.Remove(_callback);
                 }

@@ -36,7 +36,6 @@ namespace Microsoft.AspNetCore.SignalR.Client
         private readonly CancellationTokenSource _connectionActive = new CancellationTokenSource();
         private readonly Dictionary<string, InvocationRequest> _pendingCalls = new Dictionary<string, InvocationRequest>();
         private readonly ConcurrentDictionary<string, List<InvocationHandler>> _handlers = new ConcurrentDictionary<string, List<InvocationHandler>>();
-        private object _handlerLock = new object();
 
         private int _nextId = 0;
 
@@ -63,7 +62,7 @@ namespace Microsoft.AspNetCore.SignalR.Client
             _protocol = protocol;
             _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
             _logger = _loggerFactory.CreateLogger<HubConnection>();
-            _connection.OnReceived((data, state) => OnDataReceivedAsync(data), this);
+            _connection.OnReceived((data, state) => ((HubConnection)state).OnDataReceivedAsync(data), this);
             _connection.Closed += Shutdown;
         }
 
@@ -134,7 +133,7 @@ namespace Microsoft.AspNetCore.SignalR.Client
                 return invocations;
             });
 
-            return new Subscription(invocationHandler, invocationList, _handlerLock);
+            return new Subscription(invocationHandler, invocationList);
         }
 
         public async Task<ReadableChannel<object>> StreamAsync(string methodName, Type returnType, object[] args, CancellationToken cancellationToken = default(CancellationToken))
@@ -293,17 +292,16 @@ namespace Microsoft.AspNetCore.SignalR.Client
                 return;
             }
 
-            //Copying the callbacks to avoid concurrency issues
+            // Copying the callbacks to avoid concurrency issues
             InvocationHandler[] copiedHandlers;
-            lock (_handlerLock)
+            lock (handlers)
             {
                 copiedHandlers = new InvocationHandler[handlers.Count];
                 handlers.CopyTo(copiedHandlers);
             }
-            var tasks = new List<Task>();
             foreach (var handler in copiedHandlers)
             {
-                await handler.Callback(invocation.Arguments, handler.State);
+                await handler.InvokeAsync(invocation.Arguments, handler.State);
             }
         }
 
@@ -402,17 +400,15 @@ namespace Microsoft.AspNetCore.SignalR.Client
         {
             private readonly InvocationHandler _handler;
             private readonly List<InvocationHandler> _handlerList;
-            private readonly object _handlerLock;
 
-            public Subscription(InvocationHandler handler, List<InvocationHandler> handlerList, object handlerLock)
+            public Subscription(InvocationHandler handler, List<InvocationHandler> handlerList)
             {
                 _handler = handler;
                 _handlerList = handlerList;
-                _handlerLock = handlerLock;
             }
             public void Dispose()
             {
-                lock (_handlerLock)
+                lock (_handlerList)
                 {
                     _handlerList.Remove(_handler);
                 }
@@ -451,7 +447,7 @@ namespace Microsoft.AspNetCore.SignalR.Client
                 {
                     return handlers[0].ParameterTypes;
                 }
-                throw new FormatException($"There are no callbacks registered for the method '{methodName}'");
+                throw new InvalidOperationException($"There are no callbacks registered for the method '{methodName}'");
             }
         }
 
@@ -466,6 +462,11 @@ namespace Microsoft.AspNetCore.SignalR.Client
                 Callback = callback;
                 ParameterTypes = parameterTypes;
                 State = state;
+            }
+
+            public async Task InvokeAsync(object[] parameters, object state)
+            {
+                await Callback(parameters, state);
             }
         }
 

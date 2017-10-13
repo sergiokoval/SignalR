@@ -42,6 +42,7 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
         private ConcurrentDictionary<int, Tuple<Func<byte[], object, Task>, object>> _callBacks = new ConcurrentDictionary<int, Tuple<Func<byte[], object, Task>, object>>();
         private int _callBackId = 0;
 
+
         public IFeatureCollection Features { get; } = new FeatureCollection();
 
         public TestConnection(TransferMode? transferMode = null)
@@ -148,7 +149,7 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
 
         public IDisposable OnReceived(Func<byte[], object, Task> callback, object state)
         {
-            var id = GetNextCallBackId(); ;
+            var id = GetNextCallBackId();
             var addedCallBack = _callBacks.TryAdd(id, new Tuple<Func<byte[], object, Task>, object>(callback, state));
             Debug.Assert(addedCallBack);
             return new Subscription(id, _callBacks);
@@ -163,6 +164,7 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
                 _callBackId = callBackId;
                 _handler = handler;
             }
+
             public void Dispose()
             {
                 _handler.TryRemove(_callBackId, out _);
