@@ -455,9 +455,9 @@ namespace Microsoft.AspNetCore.Sockets.Client
             return new Subscription(callBack, _callBacks);
         }
 
-        public IDisposable OnReceived(Func<byte[], object, Task> callback)
+        public IDisposable OnReceived(Func<byte[], Task> callback)
         {
-            return OnReceived(callback, null);
+            return OnReceived(callback);
         }
 
         public class ReceiveCallBack
