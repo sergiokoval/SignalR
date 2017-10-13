@@ -6,7 +6,7 @@ import { IConnection } from "./IConnection"
 import { HttpConnection} from "./HttpConnection"
 import { TransportType, TransferMode } from "./Transports"
 import { Subject, Observable } from "./Observable"
-import { IHubProtocol, ProtocolType, MessageType, HubMessage, CompletionMessage, ResultMessage, InvocationMessage, NegotiationMessage } from "./IHubProtocol";
+import { IHubProtocol, ProtocolType, MessageType, HubMessage, CompletionMessage, StreamCompletionMessage, ResultMessage, InvocationMessage, NegotiationMessage } from "./IHubProtocol";
 import { JsonHubProtocol } from "./JsonHubProtocol";
 import { TextMessageFormat } from "./Formatters"
 import { Base64EncodedHubProtocol } from "./Base64EncodedHubProtocol"
@@ -63,9 +63,10 @@ export class HubConnection {
                     break;
                 case MessageType.Result:
                 case MessageType.Completion:
+                case MessageType.StreamCompletion:
                     let callback = this.callbacks.get(message.invocationId);
                     if (callback != null) {
-                        if (message.type == MessageType.Completion) {
+                        if (message.type == MessageType.Completion || message.type == MessageType.StreamCompletion) {
                             this.callbacks.delete(message.invocationId);
                         }
                         callback(message);
@@ -136,22 +137,23 @@ export class HubConnection {
 
         let subject = new Subject<T>();
 
-        this.callbacks.set(invocationDescriptor.invocationId, (invocationEvent: CompletionMessage | ResultMessage) => {
-            if (invocationEvent.type === MessageType.Completion) {
-                let completionMessage = <CompletionMessage>invocationEvent;
-                if (completionMessage.error) {
-                    subject.error(new Error(completionMessage.error));
-                }
-                else if (completionMessage.result) {
-                    subject.error(new Error("Server provided a result in a completion response to a streamed invocation."));
-                }
-                else {
-                    // TODO: Log a warning if there's a payload?
-                    subject.complete();
-                }
-            }
-            else {
-                subject.next(<T>(<ResultMessage>invocationEvent).item);
+        this.callbacks.set(invocationDescriptor.invocationId, (invocationEvent: CompletionMessage | StreamCompletionMessage | ResultMessage) => {
+            switch (invocationEvent.type) {
+                case MessageType.StreamCompletion:
+                    let completionMessage = <StreamCompletionMessage>invocationEvent;
+                    if (completionMessage.error) {
+                        subject.error(new Error(completionMessage.error));
+                    }
+                    else {
+                        subject.complete();
+                    }
+                    break;
+                case MessageType.Completion:
+                    subject.error(new Error("Received non-streaming method completion for streaming method"));
+                    break;
+                default:
+                    subject.next(<T>(<ResultMessage>invocationEvent).item);
+                    break;
             }
         });
 
@@ -178,7 +180,7 @@ export class HubConnection {
         let invocationDescriptor = this.createInvocation(methodName, args, false);
 
         let p = new Promise<any>((resolve, reject) => {
-            this.callbacks.set(invocationDescriptor.invocationId, (invocationEvent: CompletionMessage | ResultMessage) => {
+            this.callbacks.set(invocationDescriptor.invocationId, (invocationEvent: CompletionMessage | StreamCompletionMessage | ResultMessage) => {
                 if (invocationEvent.type === MessageType.Completion) {
                     let completionMessage = <CompletionMessage>invocationEvent;
                     if (completionMessage.error) {

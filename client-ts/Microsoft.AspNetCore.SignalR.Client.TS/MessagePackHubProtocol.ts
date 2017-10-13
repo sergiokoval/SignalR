@@ -1,7 +1,7 @@
 // Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
-import { IHubProtocol, ProtocolType, MessageType, HubMessage, InvocationMessage, ResultMessage, CompletionMessage } from "./IHubProtocol";
+import { IHubProtocol, ProtocolType, MessageType, HubMessage, InvocationMessage, ResultMessage, CompletionMessage, StreamCompletionMessage } from "./IHubProtocol";
 import { BinaryMessageFormat } from "./Formatters"
 import * as msgpack5 from "msgpack5"
 
@@ -34,6 +34,8 @@ export class MessagePackHubProtocol implements IHubProtocol {
                 return this.createStreamItemMessage(properties);
             case MessageType.Completion:
                 return this.createCompletionMessage(properties);
+            case MessageType.StreamCompletion:
+                return this.createStreamCompletionMessage(properties);
             default:
                 throw new Error("Invalid message type.");
         }
@@ -97,7 +99,36 @@ export class MessagePackHubProtocol implements IHubProtocol {
                 break;
         }
 
-        return completionMessage as ResultMessage;
+        return completionMessage as CompletionMessage;
+    }
+
+    private createStreamCompletionMessage(properties: any[]): StreamCompletionMessage {
+        if (properties.length < 3) {
+            throw new Error("Invalid payload for Completion message.");
+        }
+
+        const errorResult = 1;
+        const voidResult = 2;
+        const nonVoidResult = 3;
+
+        let resultKind = properties[2];
+
+        /*
+        if ((resultKind === nonVoidResult)
+            throw new Error("Invalid payload for Completion message.");
+        }*/
+
+        let streamCompletionMessage = {
+            type: MessageType.StreamCompletion,
+            invocationId: properties[1],
+            error: null as string,
+        };
+
+        if (resultKind === errorResult) {
+            streamCompletionMessage.error = properties[3];
+        }
+
+        return streamCompletionMessage as StreamCompletionMessage;
     }
 
     writeMessage(message: HubMessage): ArrayBuffer {
